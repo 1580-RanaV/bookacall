@@ -5,7 +5,7 @@ import Image from "next/image";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Duration = 15 | 30 | 60;
-type EmailState = "idle" | "loading" | "valid";
+type EmailState = "idle" | "loading" | "valid" | "invalid";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -78,6 +78,12 @@ function addMinutes(timeStr: string, mins: number): string {
   const ep = eh < 12 ? "AM" : "PM";
   const dh = eh === 0 ? 12 : eh > 12 ? eh - 12 : eh;
   return `${dh}:${em.toString().padStart(2, "0")} ${ep}`;
+}
+
+function isValidEmail(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length > 254 || trimmed.includes(" ")) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed);
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -164,16 +170,22 @@ export default function BookingPage() {
   const [confirmed, setConfirmed] = useState(false);
   const [booked, setBooked] = useState(false);
   const [cancelled, setCancelled] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
   const [email, setEmail] = useState("");
   const [emailState, setEmailState] = useState<EmailState>("idle");
+  const [emailTouched, setEmailTouched] = useState(false);
   const [notes, setNotes] = useState("");
   const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const emailInnerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const updateLayout = () => setIsCompact(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+
     return () => {
       if (emailTimer.current) clearTimeout(emailTimer.current);
-      if (emailInnerTimer.current) clearTimeout(emailInnerTimer.current);
+      media.removeEventListener("change", updateLayout);
     };
   }, []);
 
@@ -204,6 +216,7 @@ export default function BookingPage() {
       setConfirmed(false);
       setEmail("");
       setEmailState("idle");
+      setEmailTouched(false);
       setNotes("");
     } else {
       setSelDate(null);
@@ -223,20 +236,42 @@ export default function BookingPage() {
     setSelSlot(null);
     setEmail("");
     setEmailState("idle");
+    setEmailTouched(false);
     setNotes("");
   }
 
   function handleEmailChange(val: string) {
     setEmail(val);
-    setEmailState("idle");
+    const trimmed = val.trim();
+    setEmailState(trimmed ? "loading" : "idle");
     if (emailTimer.current) clearTimeout(emailTimer.current);
-    if (emailInnerTimer.current) clearTimeout(emailInnerTimer.current);
-    if (val.includes("@") && val.includes(".")) {
-      emailTimer.current = setTimeout(() => {
-        setEmailState("loading");
-        emailInnerTimer.current = setTimeout(() => setEmailState("valid"), 600);
-      }, 500);
+    if (!trimmed) return;
+
+    emailTimer.current = setTimeout(() => {
+      setEmailState(isValidEmail(trimmed) ? "valid" : "invalid");
+    }, 450);
+  }
+
+  function handleEmailBlur() {
+    setEmailTouched(true);
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setEmailState("idle");
+      return;
     }
+    setEmailState(isValidEmail(trimmed) ? "valid" : "invalid");
+  }
+
+  function handleConfirmBooking() {
+    const trimmed = email.trim();
+    setEmailTouched(true);
+    if (!isValidEmail(trimmed)) {
+      setEmailState(trimmed ? "invalid" : "idle");
+      return;
+    }
+    setEmail(trimmed);
+    setEmailState("valid");
+    setBooked(true);
   }
 
   // ── Theme tokens ────────────────────────────────────────────────────────────
@@ -264,9 +299,22 @@ export default function BookingPage() {
     cancelBtn:   dark ? "border-red-500/30 text-red-400 hover:bg-red-500/10" : "border-red-300 text-red-500 hover:bg-red-50",
     cancelText:  dark ? "text-red-400 hover:text-red-300" : "text-red-500 hover:text-red-600",
   };
+  const emailInvalid = emailTouched && email.trim().length > 0 && emailState === "invalid";
+  const emailMissing = emailTouched && email.trim().length === 0;
+  const canConfirmBooking = emailState === "valid" && isValidEmail(email);
+
+  // Responsive panel sizing:
+  // - Desktop keeps the original hardcoded widths and horizontal slide behavior.
+  // - Mobile stacks sections at full width and collapses hidden panels vertically.
+  const calendarPanelWidth = confirmed ? 0 : (isCompact ? "100%" : 500);
+  const slotsPanelWidth = confirmed ? 0 : (selDate ? (isCompact ? "100%" : 256) : 0);
+  const formPanelWidth = confirmed ? (isCompact ? "100%" : 500) : 0;
+  const calendarPanelMaxHeight = isCompact ? (confirmed ? 0 : 900) : undefined;
+  const slotsPanelMaxHeight = isCompact ? (!confirmed && selDate ? 520 : 0) : undefined;
+  const formPanelMaxHeight = isCompact ? (confirmed ? 700 : 0) : undefined;
 
   return (
-    <div className={`min-h-screen ${$.page} flex flex-col items-center justify-center p-8 gap-6 transition-colors duration-300`}>
+    <div className={`min-h-screen ${$.page} flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 gap-5 md:gap-6 transition-colors duration-300`}>
 
       {/* Dark / light toggle */}
       <button
@@ -279,22 +327,22 @@ export default function BookingPage() {
 
       {/* ── Final state: booked or cancelled ─────────────────────────────── */}
       {(cancelled || booked) && selDate && selSlot ? (
-        <div key={cancelled ? "cancelled-card" : "booked-card"} className={`animate-card-in relative w-200 overflow-hidden rounded-2xl px-16 py-12 transition-colors duration-300 ${$.card} ${$.shadow}`}>
+        <div key={cancelled ? "cancelled-card" : "booked-card"} className={`animate-card-in relative w-full max-w-[800px] overflow-hidden rounded-2xl px-7 py-9 sm:px-10 md:px-16 md:py-12 transition-colors duration-300 ${$.card} ${$.shadow}`}>
           <Image
             src="/logo.png"
             alt=""
             width={430}
             height={430}
-            className="animate-watermark-in pointer-events-none absolute -right-28 top-16"
+            className="animate-watermark-in pointer-events-none absolute -right-32 top-24 h-auto w-72 sm:w-88 md:-right-28 md:top-16 md:w-[430px]"
             aria-hidden="true"
           />
 
-          <div className="relative z-10 max-w-88 pt-8">
+          <div className="relative z-10 max-w-88 pt-4 md:pt-8">
             <div className="animate-pop-in mb-5" style={{ animationDelay: "0.08s" }}>
               {cancelled ? <IcoCancelled /> : <IcoVerified />}
             </div>
             <h1
-              className={`animate-fade-up text-[26px] font-bold ${$.heading} leading-tight`}
+              className={`animate-fade-up text-[23px] md:text-[26px] font-bold ${$.heading} leading-tight`}
               style={{ animationDelay: "0.2s" }}
             >
               {cancelled ? "Meeting cancelled" : "Meeting confirmed"}
@@ -304,23 +352,23 @@ export default function BookingPage() {
               style={{ animationDelay: "0.3s" }}
             >
               {cancelled ? (
-                "Your meeting with Aman Tiwari has been cancelled."
+                "Your meeting with Aman Tiwari has been cancelled. Hope to meet soon."
               ) : (
                 <>
-                  Your booking with Aman Tiwari is confirmed
+                  Your meeting with Aman Tiwari is confirmed
                   {email && (
                     <>
                       , and a calendar invite has been sent to{" "}
                       <span className={`font-medium ${$.heading} break-all`}>{email}</span>
                     </>
                   )}
-                  .
+                  . See you soon!
                 </>
               )}
             </p>
           </div>
 
-          <div className="relative z-10 mt-9 max-w-88 space-y-3">
+          <div className="relative z-10 mt-8 md:mt-9 max-w-88 space-y-3">
             <div className={`animate-fade-up flex items-start gap-2.5 ${$.sub}`} style={{ animationDelay: "0.4s" }}>
               <div className="mt-0.5 shrink-0"><IcoCal /></div>
               <span className={`text-[13px] font-medium ${$.heading} leading-snug`}>
@@ -357,7 +405,7 @@ export default function BookingPage() {
             )}
           </div>
 
-          <div className={`animate-fade-up relative z-10 mt-12 flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.74s" }}>
+          <div className={`animate-fade-up relative z-10 mt-10 md:mt-12 hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.74s" }}>
             <span>powered by</span>
             <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
             <span>Intempt</span>
@@ -367,13 +415,13 @@ export default function BookingPage() {
       ) : (
 
         /* ── Steps 1–3: split card ────────────────────────────────────────── */
-        <div className={`relative rounded-2xl flex h-130 overflow-hidden transition-colors duration-300 ${$.card} ${$.shadow}`}>
+        <div className={`animate-card-in relative w-full md:w-auto rounded-2xl flex flex-col md:flex-row md:h-130 overflow-hidden transition-colors duration-300 ${$.card} ${$.shadow}`}>
 
           {/* ── Left info panel ─────────────────────────────────────────── */}
-          <div className={`w-80 shrink-0 flex flex-col p-8 border-r ${$.divider}`}>
+          <div className={`w-full md:w-80 shrink-0 flex flex-col p-6 sm:p-8 border-b md:border-b-0 md:border-r ${$.divider}`}>
 
             {/* Top: back + logo */}
-            <div className="flex items-center justify-between mb-8 shrink-0">
+            <div className="animate-fade-up flex items-center justify-between mb-8 shrink-0" style={{ animationDelay: "0.08s" }}>
               <button
                 onClick={handleBack}
                 aria-label="Go back"
@@ -389,12 +437,15 @@ export default function BookingPage() {
             {/* Content: steps 1–2 vs step 3 */}
             {!confirmed ? (
               <>
-                <p className={`text-[13px] ${$.sub} mb-1`}>Aman Tiwari</p>
-                <h1 className={`text-[20px] font-bold ${$.heading} leading-snug mb-6`}>
+                <p className={`animate-fade-up text-[13px] ${$.sub} mb-1`} style={{ animationDelay: "0.16s" }}>Aman Tiwari</p>
+                <h1 className={`animate-fade-up text-[20px] font-bold ${$.heading} leading-snug mb-6`} style={{ animationDelay: "0.22s" }}>
                   {DURATION_TITLE[duration]}
                 </h1>
-                <p className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest mb-3`}>Duration</p>
-                <div className="flex gap-2">
+                <p className={`animate-fade-up text-[13px] leading-relaxed ${$.sub} mb-6`} style={{ animationDelay: "0.28s" }}>
+                  Pick a time that works best for your schedule.
+                </p>
+                <p className={`animate-fade-up text-[11px] font-semibold ${$.muted} uppercase tracking-widest mb-3`} style={{ animationDelay: "0.3s" }}>Duration</p>
+                <div className="animate-fade-up flex gap-2" style={{ animationDelay: "0.36s" }}>
                   {DURATIONS.map(d => (
                     <button
                       key={d}
@@ -413,9 +464,12 @@ export default function BookingPage() {
               <>
                 {selDate && selSlot && (
                   <>
-                    <p className={`text-[13px] ${$.sub} mb-1`}>Aman Tiwari</p>
-                    <h1 className={`text-[17px] font-bold ${$.heading} mb-6`}>Confirm your booking</h1>
-                    <div className="space-y-3">
+                    <p className={`animate-fade-up text-[13px] ${$.sub} mb-1`} style={{ animationDelay: "0.16s" }}>Aman Tiwari</p>
+                    <h1 className={`animate-fade-up text-[17px] font-bold ${$.heading} mb-2`} style={{ animationDelay: "0.22s" }}>Confirm your booking</h1>
+                    <p className={`animate-fade-up text-[13px] leading-relaxed ${$.sub} mb-6`} style={{ animationDelay: "0.26s" }}>
+                      Almost there. Add your email to receive the invite.
+                    </p>
+                    <div className="animate-fade-up space-y-3" style={{ animationDelay: "0.3s" }}>
                       <div className={`flex items-start gap-2.5 ${$.sub}`}>
                         <div className="mt-0.5 shrink-0"><IcoCal /></div>
                         <span className={`text-[13px] font-medium ${$.heading} leading-snug`}>
@@ -441,7 +495,7 @@ export default function BookingPage() {
 
             {/* Footer */}
             <div className="shrink-0">
-              <div className={`flex items-center gap-1.5 text-[11px] ${$.muted}`}>
+              <div className={`animate-fade-up hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.44s" }}>
                 <span>powered by</span>
                 <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
                 <span>Intempt</span>
@@ -451,13 +505,13 @@ export default function BookingPage() {
 
           {/* ── Calendar panel (hides when confirmed) ───────────────────── */}
           <div
-            className="shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out"
-            style={{ width: confirmed ? 0 : 500 }}
+            className="shrink-0 overflow-hidden transition-all duration-500 ease-in-out"
+            style={{ width: calendarPanelWidth, maxHeight: calendarPanelMaxHeight }}
           >
-            <div className="w-125 shrink-0 p-10">
-              <h2 className={`text-[17px] font-bold ${$.heading} mb-7`}>Select a Date & Time</h2>
+            <div className="w-full md:w-125 shrink-0 p-6 sm:p-8 md:p-10">
+              <h2 className={`animate-fade-up text-[17px] font-bold ${$.heading} mb-7`} style={{ animationDelay: "0.18s" }}>Select a Date & Time</h2>
 
-              <div className="flex items-center justify-between mb-6">
+              <div className="animate-fade-up flex items-center justify-between mb-6" style={{ animationDelay: "0.24s" }}>
                 <button
                   onClick={() => setMonthDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
                   className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${$.navPrev}`}
@@ -473,7 +527,7 @@ export default function BookingPage() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-7 mb-1">
+              <div className="animate-fade-up grid grid-cols-7 mb-1" style={{ animationDelay: "0.32s" }}>
                 {WEEKDAYS.map(d => (
                   <div key={d} className={`text-center text-[10px] font-semibold tracking-widest ${$.muted} py-1.5`}>
                     {d}
@@ -481,7 +535,7 @@ export default function BookingPage() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-7">
+              <div className="animate-fade-up grid grid-cols-7" style={{ animationDelay: "0.4s" }}>
                 {cells.map((day, i) => {
                   if (day === null) return <div key={i} className="h-11" />;
                   const date = new Date(y, m, day);
@@ -519,17 +573,17 @@ export default function BookingPage() {
 
           {/* ── Time slots panel ────────────────────────────────────────── */}
           <div
-            className="shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out"
-            style={{ width: confirmed ? 0 : (selDate ? 256 : 0) }}
+            className="shrink-0 overflow-hidden transition-all duration-500 ease-in-out"
+            style={{ width: slotsPanelWidth, maxHeight: slotsPanelMaxHeight }}
           >
-            <div className={`w-64 h-full flex flex-col py-10 px-6 border-l ${$.divider}`}>
+            <div className={`w-full md:w-64 md:h-full flex flex-col px-6 pb-8 md:py-10 md:border-l ${$.divider}`}>
               {selDate && (
                 <>
-                  <p className={`text-[13px] font-semibold ${$.heading} mb-5 shrink-0`}>
+                  <p className={`animate-fade-up text-[13px] font-semibold ${$.heading} mb-5 shrink-0`}>
                     {DAYS_LONG[selDate.getDay()]}, {MONTHS_SHORT[selDate.getMonth()]} {selDate.getDate()}
                   </p>
                   <div className="relative flex-1 min-h-0">
-                    <div className="absolute inset-0 overflow-y-auto pr-6 space-y-2.5">
+                    <div className="animate-fade-up max-h-80 overflow-y-auto pr-2 md:absolute md:inset-0 md:max-h-none md:pr-6 space-y-2.5" style={{ animationDelay: "0.08s" }}>
                       {SLOTS[duration].map(slot => {
                         const isSel = selSlot === slot;
                         const isBlocked = BLOCKED[duration].has(slot);
@@ -570,29 +624,34 @@ export default function BookingPage() {
 
           {/* ── Confirmation form panel ──────────────────────────────────── */}
           <div
-            className="shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out"
-            style={{ width: confirmed ? 500 : 0 }}
+            className="shrink-0 overflow-hidden transition-all duration-500 ease-in-out"
+            style={{ width: formPanelWidth, maxHeight: formPanelMaxHeight }}
           >
-            <div className={`w-125 h-full flex flex-col px-10 border-l ${$.divider}`}>
+            <div className={`w-full md:w-125 md:h-full flex flex-col px-6 sm:px-8 md:px-10 py-8 md:py-0 md:border-l ${$.divider}`}>
               {confirmed && selDate && selSlot && (
                 <>
                   <div className="flex-1" />
-                  <div className="space-y-4">
+                  <div className="animate-fade-up space-y-4" style={{ animationDelay: "0.08s" }}>
                     <div>
-                      <label htmlFor="booking-email" className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest block mb-2`}>
-                        Email
-                      </label>
+	                      <label htmlFor="booking-email" className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest block mb-2`}>
+	                        Email
+	                      </label>
                       <div className="relative">
-                        <input
-                          id="booking-email"
-                          type="email"
-                          value={email}
-                          onChange={e => handleEmailChange(e.target.value)}
-                          placeholder="your@email.com"
-                          className={`w-full px-4 py-2.5 rounded-lg border text-[13px] outline-none transition-all duration-200 focus:border-blue-500 ${$.inputBg} ${$.inputBorder} ${$.inputText}`}
-                        />
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2" role="status" aria-live="polite">
-                          {emailState === "loading" && (
+	                        <input
+	                          id="booking-email"
+	                          type="email"
+	                          value={email}
+	                          onChange={e => handleEmailChange(e.target.value)}
+	                          onBlur={handleEmailBlur}
+	                          placeholder="your@email.com"
+	                          aria-invalid={emailInvalid || emailMissing}
+	                          aria-describedby={emailInvalid || emailMissing ? "booking-email-error" : undefined}
+	                          className={`w-full px-4 py-2.5 rounded-lg border text-[13px] outline-none transition-all duration-200 focus:border-blue-500 ${$.inputBg} ${
+	                            emailInvalid || emailMissing ? "border-red-400 focus:border-red-500" : $.inputBorder
+	                          } ${$.inputText}`}
+	                        />
+	                        <div className="absolute right-3 top-1/2 -translate-y-1/2" role="status" aria-live="polite">
+	                          {emailState === "loading" && (
                             <>
                               <IcoSpinner />
                               <span className="sr-only">Validating email…</span>
@@ -602,11 +661,19 @@ export default function BookingPage() {
                             <>
                               <IcoCheck />
                               <span className="sr-only">Email valid</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+	                            </>
+	                          )}
+	                          {emailState === "invalid" && email.trim() && (
+	                            <span className="text-[12px] font-semibold text-red-500">!</span>
+	                          )}
+	                        </div>
+	                      </div>
+	                      {(emailInvalid || emailMissing) && (
+	                        <p id="booking-email-error" className="mt-2 text-[12px] text-red-500">
+	                          {emailMissing ? "Email is required." : "Enter a valid email address."}
+	                        </p>
+	                      )}
+	                    </div>
                     <div>
                       <label htmlFor="booking-notes" className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest block mb-2`}>
                         Notes{" "}
@@ -616,17 +683,18 @@ export default function BookingPage() {
                         id="booking-notes"
                         value={notes}
                         onChange={e => setNotes(e.target.value)}
-                        placeholder="Share anything that will help prepare for our meeting..."
+	                        placeholder="Anything you want Aman to know before the call?"
                         rows={4}
                         className={`w-full px-4 py-2.5 rounded-lg border text-[13px] outline-none transition-all duration-200 focus:border-blue-500 resize-none ${$.inputBg} ${$.inputBorder} ${$.inputText}`}
                       />
                     </div>
-                    <button
-                      onClick={() => setBooked(true)}
-                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[14px] font-bold transition-all duration-200"
-                    >
-                      Confirm Booking
-                    </button>
+	                    <button
+	                      onClick={handleConfirmBooking}
+	                      disabled={!canConfirmBooking}
+	                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-[14px] font-bold transition-all duration-200"
+	                    >
+	                      Confirm Booking
+	                    </button>
                   </div>
                   <div className="flex-1" />
                 </>
@@ -638,9 +706,11 @@ export default function BookingPage() {
       )}
 
       {/* Page footer — outside the card */}
-      <div className={`flex gap-6 text-xs ${$.sub}`}>
-        <button className="hover:underline underline-offset-2 transition-colors">Cookie settings</button>
-        <button className="hover:underline underline-offset-2 transition-colors">Privacy Policy</button>
+      <div className={`flex flex-col items-center gap-3 md:flex-row md:gap-6 text-xs ${$.sub}`}>
+        <div className="flex gap-6">
+          <button className="hover:underline underline-offset-2 transition-colors">Cookie settings</button>
+          <button className="hover:underline underline-offset-2 transition-colors">Privacy Policy</button>
+        </div>
       </div>
     </div>
   );
