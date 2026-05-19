@@ -70,18 +70,22 @@ function isAvailable(date: Date) {
 }
 
 function addMinutes(timeStr: string, mins: number): string {
+  const total = timeToMinutes(timeStr) + mins;
+  const eh = Math.floor(total / 60) % 24;
+  const em = total % 60;
+  const ep = eh < 12 ? "AM" : "PM";
+  const dh = eh === 0 ? 12 : eh > 12 ? eh - 12 : eh;
+  return `${dh}:${em.toString().padStart(2, "0")} ${ep}`;
+}
+
+function timeToMinutes(timeStr: string): number {
   const [time, period] = timeStr.split(" ");
   const [hStr, mStr] = time.split(":");
   let h = parseInt(hStr);
   const m = parseInt(mStr);
   if (period === "PM" && h !== 12) h += 12;
   if (period === "AM" && h === 12) h = 0;
-  const total = h * 60 + m + mins;
-  const eh = Math.floor(total / 60) % 24;
-  const em = total % 60;
-  const ep = eh < 12 ? "AM" : "PM";
-  const dh = eh === 0 ? 12 : eh > 12 ? eh - 12 : eh;
-  return `${dh}:${em.toString().padStart(2, "0")} ${ep}`;
+  return h * 60 + m;
 }
 
 function isValidEmail(value: string): boolean {
@@ -472,7 +476,7 @@ export default function BookingPage() {
           <div className="animate-fade-up flex items-center justify-between mb-10" style={{ animationDelay: "0.08s" }}>
             <div>
               <p className={`text-[13px] ${$.sub} mb-1`}>Aman Tiwari</p>
-              <h1 className={`text-[22px] font-bold ${$.heading}`}>How much time works?</h1>
+              <h1 className={`text-[22px] font-bold ${$.heading}`}>Choose a duration</h1>
             </div>
             <Image src="/logo.png" alt="Intempt" width={26} height={26} className="rounded-lg opacity-80" />
           </div>
@@ -622,7 +626,7 @@ export default function BookingPage() {
                   const date = new Date(y, m, day);
                   const isToday = sameDay(date, todayDate);
                   const isFuture = startOfDay(date) > startOfDay(todayDate);
-                  const avail = isAvailable(date) && isFuture;
+                  const avail = isAvailable(date) && (isToday || isFuture);
                   const isSel = !!selDate && sameDay(date, selDate);
 
                   const cls = [
@@ -666,10 +670,11 @@ export default function BookingPage() {
                   </p>
                   <div className="relative flex-1 min-h-0">
                     <div className="animate-fade-up max-h-80 overflow-y-auto pr-2 md:absolute md:inset-0 md:max-h-none md:pr-6 space-y-2.5" style={{ animationDelay: "0.08s" }}>
-                      {SLOTS[duration].map(slot => {
-                        const isSel = selSlot === slot;
-                        const isBlocked = BLOCKED[duration].has(slot);
-                        return (
+	                      {SLOTS[duration].map(slot => {
+	                        const isSel = selSlot === slot;
+	                        const isPastTodaySlot = sameDay(selDate, todayDate) && timeToMinutes(slot) < todayDate.getHours() * 60 + todayDate.getMinutes();
+	                        const isBlocked = BLOCKED[duration].has(slot) || isPastTodaySlot;
+	                        return (
                           <button
                             key={slot}
                             disabled={isBlocked}
