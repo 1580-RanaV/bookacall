@@ -18,12 +18,16 @@ const DAYS_LONG = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","
 
 const DURATIONS: Duration[] = [15, 30, 60];
 const DURATION_LABEL: Record<Duration, string> = { 15: "15 min", 30: "30 min", 60: "1 hour" };
-const DURATION_TITLE: Record<Duration, string> = {
-  15: "Quick 15 Min Call",
-  30: "30 Min Meeting",
-  60: "1 Hour Deep Dive",
+const DURATION_CARD_TITLE: Record<Duration, string> = {
+  15: "Quick chat",
+  30: "Standard call",
+  60: "Deep dive",
 };
-
+const DURATION_CARD_COPY: Record<Duration, string> = {
+  15: "15 min call",
+  30: "30 min call",
+  60: "1 hour call",
+};
 const SLOTS: Record<Duration, string[]> = {
   15: [
     "9:00 AM","9:15 AM","9:30 AM","9:45 AM",
@@ -53,12 +57,11 @@ const BLOCKED: Record<Duration, Set<string>> = {
   60: new Set(["10:00 AM","1:00 PM","3:00 PM"]),
 };
 
-const TODAY = new Date(2026, 4, 17);
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function daysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate(); }
 function mondayOffset(y: number, m: number) { return (new Date(y, m, 1).getDay() + 6) % 7; }
 function sameDay(a: Date, b: Date) { return a.toDateString() === b.toDateString(); }
+function startOfDay(date: Date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate()); }
 
 function isAvailable(date: Date) {
   const y = date.getFullYear(), m = date.getMonth(), d = date.getDate();
@@ -164,7 +167,9 @@ const IcoCheck = () => (
 export default function BookingPage() {
   const [dark, setDark] = useState(false);
   const [duration, setDuration] = useState<Duration>(30);
+  const [durationChosen, setDurationChosen] = useState(false);
   const [monthDate, setMonthDate] = useState(new Date(2026, 4, 1));
+  const [todayDate] = useState(() => new Date());
   const [selDate, setSelDate] = useState<Date | null>(null);
   const [selSlot, setSelSlot] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -207,6 +212,7 @@ export default function BookingPage() {
 
   function handleDurationChange(d: Duration) {
     setDuration(d);
+    setDurationChosen(true);
     setSelDate(null);
     setSelSlot(null);
   }
@@ -218,9 +224,11 @@ export default function BookingPage() {
       setEmailState("idle");
       setEmailTouched(false);
       setNotes("");
-    } else {
+    } else if (selDate) {
       setSelDate(null);
       setSelSlot(null);
+    } else {
+      setDurationChosen(false);
     }
   }
 
@@ -232,6 +240,7 @@ export default function BookingPage() {
   function handleBookAgain() {
     setCancelled(false);
     setConfirmed(false);
+    setDurationChosen(false);
     setSelDate(null);
     setSelSlot(null);
     setEmail("");
@@ -291,12 +300,9 @@ export default function BookingPage() {
     slotBtn:     dark ? "border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hover:border-blue-400/60" : "border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300",
     slotBlocked: dark ? "border-zinc-800 text-zinc-700 cursor-not-allowed"                              : "border-gray-100 text-gray-300 bg-gray-50/60 cursor-not-allowed",
     fadeFrom:    dark ? "from-zinc-900"               : "from-white",
-    pill:        dark ? "border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200" : "border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700",
-    pillActive:  dark ? "bg-blue-600 border-blue-600 text-white"      : "bg-blue-600 border-blue-600 text-white",
     inputBg:     dark ? "bg-zinc-800"                 : "bg-gray-50",
     inputBorder: dark ? "border-zinc-700"             : "border-gray-200",
     inputText:   dark ? "text-white placeholder:text-zinc-500" : "text-gray-900 placeholder:text-gray-400",
-    cancelBtn:   dark ? "border-red-500/30 text-red-400 hover:bg-red-500/10" : "border-red-300 text-red-500 hover:bg-red-50",
     cancelText:  dark ? "text-red-400 hover:text-red-300" : "text-red-500 hover:text-red-600",
   };
   const emailInvalid = emailTouched && email.trim().length > 0 && emailState === "invalid";
@@ -333,8 +339,15 @@ export default function BookingPage() {
             alt=""
             width={430}
             height={430}
-            className="animate-watermark-in pointer-events-none absolute -right-32 top-24 h-auto w-72 sm:w-88 md:-right-28 md:top-16 md:w-[430px]"
+            className="animate-watermark-in pointer-events-none absolute -right-28 top-16 hidden h-auto w-[430px] md:block"
             aria-hidden="true"
+          />
+          <Image
+            src="/logo.png"
+            alt="Intempt"
+            width={26}
+            height={26}
+            className="absolute right-7 top-7 rounded-lg opacity-80 md:hidden"
           />
 
           <div className="relative z-10 max-w-88 pt-4 md:pt-8">
@@ -412,9 +425,49 @@ export default function BookingPage() {
           </div>
         </div>
 
+      ) : !durationChosen ? (
+
+        /* ── Step 1: meeting duration picker ─────────────────────────────── */
+        <div className={`animate-card-in relative w-full max-w-[520px] rounded-2xl overflow-hidden px-7 py-8 sm:px-10 sm:py-10 transition-colors duration-300 ${$.card} ${$.shadow}`}>
+          <div className="animate-fade-up flex items-center justify-between mb-10" style={{ animationDelay: "0.08s" }}>
+            <div>
+              <p className={`text-[13px] ${$.sub} mb-1`}>Aman Tiwari</p>
+              <h1 className={`text-[22px] font-bold ${$.heading}`}>How much time works?</h1>
+            </div>
+            <Image src="/logo.png" alt="Intempt" width={26} height={26} className="rounded-lg opacity-80" />
+          </div>
+
+          <div className="space-y-3">
+            {DURATIONS.map((d, index) => (
+              <button
+                key={d}
+                onClick={() => handleDurationChange(d)}
+                className={`animate-fade-up group flex w-full items-center justify-between rounded-xl border px-5 py-4 text-left transition-all duration-200 ${
+                  dark ? "border-zinc-800 hover:border-blue-500/60 hover:bg-blue-500/10" : "border-gray-200 hover:border-blue-300 hover:bg-blue-50"
+                }`}
+                style={{ animationDelay: `${0.18 + index * 0.08}s` }}
+              >
+                <span>
+                  <span className={`block text-[15px] font-bold ${$.heading}`}>{DURATION_CARD_TITLE[d]}</span>
+                  <span className={`mt-1 block text-[12px] ${$.sub}`}>{DURATION_CARD_COPY[d]}</span>
+                </span>
+                <span className="flex h-8 w-8 items-center justify-center rounded-full text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
+                  <ChevR />
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className={`animate-fade-up mt-12 hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.5s" }}>
+            <span>powered by</span>
+            <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
+            <span>Intempt</span>
+          </div>
+        </div>
+
       ) : (
 
-        /* ── Steps 1–3: split card ────────────────────────────────────────── */
+        /* ── Steps 2–4: calendar, slots, and confirmation form ───────────── */
         <div className={`animate-card-in relative w-full md:w-auto rounded-2xl flex flex-col md:flex-row md:h-130 overflow-hidden transition-colors duration-300 ${$.card} ${$.shadow}`}>
 
           {/* ── Left info panel ─────────────────────────────────────────── */}
@@ -426,7 +479,7 @@ export default function BookingPage() {
                 onClick={handleBack}
                 aria-label="Go back"
                 className={`w-8 h-8 rounded-full border-2 border-blue-600 flex items-center justify-center text-blue-600 transition-all duration-200 ${$.backHover} ${
-                  selDate || confirmed ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                  durationChosen || selDate || confirmed ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
                 }`}
               >
                 <ChevL />
@@ -434,30 +487,18 @@ export default function BookingPage() {
               <Image src="/logo.png" alt="Intempt" width={26} height={26} className="rounded-lg opacity-80" />
             </div>
 
-            {/* Content: steps 1–2 vs step 3 */}
+            {/* Selected meeting summary; switches to final confirmation details */}
             {!confirmed ? (
               <>
                 <p className={`animate-fade-up text-[13px] ${$.sub} mb-1`} style={{ animationDelay: "0.16s" }}>Aman Tiwari</p>
                 <h1 className={`animate-fade-up text-[20px] font-bold ${$.heading} leading-snug mb-6`} style={{ animationDelay: "0.22s" }}>
-                  {DURATION_TITLE[duration]}
+                  {DURATION_CARD_TITLE[duration]}
                 </h1>
                 <p className={`animate-fade-up text-[13px] leading-relaxed ${$.sub} mb-6`} style={{ animationDelay: "0.28s" }}>
                   Pick a time that works best for your schedule.
                 </p>
-                <p className={`animate-fade-up text-[11px] font-semibold ${$.muted} uppercase tracking-widest mb-3`} style={{ animationDelay: "0.3s" }}>Duration</p>
-                <div className="animate-fade-up flex gap-2" style={{ animationDelay: "0.36s" }}>
-                  {DURATIONS.map(d => (
-                    <button
-                      key={d}
-                      onClick={() => handleDurationChange(d)}
-                      className={`flex-1 py-2 rounded-lg border text-[12px] font-semibold transition-all duration-150 ${
-                        duration === d ? $.pillActive : $.pill
-                      }`}
-                    >
-                      {DURATION_LABEL[d]}
-                    </button>
-                  ))}
-                </div>
+                <p className={`animate-fade-up text-[11px] font-semibold ${$.muted} uppercase tracking-widest mb-2`} style={{ animationDelay: "0.3s" }}>Duration</p>
+                <p className={`animate-fade-up text-[13px] font-semibold ${$.heading}`} style={{ animationDelay: "0.36s" }}>{DURATION_LABEL[duration]}</p>
                 <div className="flex-1" />
               </>
             ) : (
@@ -539,15 +580,16 @@ export default function BookingPage() {
                 {cells.map((day, i) => {
                   if (day === null) return <div key={i} className="h-11" />;
                   const date = new Date(y, m, day);
-                  const avail = isAvailable(date);
-                  const isToday = sameDay(date, TODAY);
+                  const isToday = sameDay(date, todayDate);
+                  const isFuture = startOfDay(date) > startOfDay(todayDate);
+                  const avail = isAvailable(date) && isFuture;
                   const isSel = !!selDate && sameDay(date, selDate);
 
                   const cls = [
                     "h-10 w-10 mx-auto flex flex-col items-center justify-center rounded-full text-[13px] relative transition-all duration-150",
                     isSel  ? "bg-blue-600 text-white font-semibold scale-105" :
-                    avail  ? `${$.avail} font-medium cursor-pointer` :
                     isToday ? `${$.sub} font-medium` :
+                    avail  ? `${$.avail} font-medium cursor-pointer` :
                     `${$.muted} cursor-default`,
                   ].join(" ");
 
@@ -633,25 +675,25 @@ export default function BookingPage() {
                   <div className="flex-1" />
                   <div className="animate-fade-up space-y-4" style={{ animationDelay: "0.08s" }}>
                     <div>
-	                      <label htmlFor="booking-email" className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest block mb-2`}>
-	                        Email
-	                      </label>
+                      <label htmlFor="booking-email" className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest block mb-2`}>
+                        Email
+                      </label>
                       <div className="relative">
-	                        <input
-	                          id="booking-email"
-	                          type="email"
-	                          value={email}
-	                          onChange={e => handleEmailChange(e.target.value)}
-	                          onBlur={handleEmailBlur}
-	                          placeholder="your@email.com"
-	                          aria-invalid={emailInvalid || emailMissing}
-	                          aria-describedby={emailInvalid || emailMissing ? "booking-email-error" : undefined}
-	                          className={`w-full px-4 py-2.5 rounded-lg border text-[13px] outline-none transition-all duration-200 focus:border-blue-500 ${$.inputBg} ${
-	                            emailInvalid || emailMissing ? "border-red-400 focus:border-red-500" : $.inputBorder
-	                          } ${$.inputText}`}
-	                        />
-	                        <div className="absolute right-3 top-1/2 -translate-y-1/2" role="status" aria-live="polite">
-	                          {emailState === "loading" && (
+                        <input
+                          id="booking-email"
+                          type="email"
+                          value={email}
+                          onChange={e => handleEmailChange(e.target.value)}
+                          onBlur={handleEmailBlur}
+                          placeholder="your@email.com"
+                          aria-invalid={emailInvalid || emailMissing}
+                          aria-describedby={emailInvalid || emailMissing ? "booking-email-error" : undefined}
+                          className={`w-full px-4 py-2.5 rounded-lg border text-[13px] outline-none transition-all duration-200 focus:border-blue-500 ${$.inputBg} ${
+                            emailInvalid || emailMissing ? "border-red-400 focus:border-red-500" : $.inputBorder
+                          } ${$.inputText}`}
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2" role="status" aria-live="polite">
+                          {emailState === "loading" && (
                             <>
                               <IcoSpinner />
                               <span className="sr-only">Validating email…</span>
@@ -661,19 +703,19 @@ export default function BookingPage() {
                             <>
                               <IcoCheck />
                               <span className="sr-only">Email valid</span>
-	                            </>
-	                          )}
-	                          {emailState === "invalid" && email.trim() && (
-	                            <span className="text-[12px] font-semibold text-red-500">!</span>
-	                          )}
-	                        </div>
-	                      </div>
-	                      {(emailInvalid || emailMissing) && (
-	                        <p id="booking-email-error" className="mt-2 text-[12px] text-red-500">
-	                          {emailMissing ? "Email is required." : "Enter a valid email address."}
-	                        </p>
-	                      )}
-	                    </div>
+                            </>
+                          )}
+                          {emailState === "invalid" && email.trim() && (
+                            <span className="text-[12px] font-semibold text-red-500">!</span>
+                          )}
+                        </div>
+                      </div>
+                      {(emailInvalid || emailMissing) && (
+                        <p id="booking-email-error" className="mt-2 text-[12px] text-red-500">
+                          {emailMissing ? "Email is required." : "Enter a valid email address."}
+                        </p>
+                      )}
+                    </div>
                     <div>
                       <label htmlFor="booking-notes" className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest block mb-2`}>
                         Notes{" "}
@@ -683,18 +725,18 @@ export default function BookingPage() {
                         id="booking-notes"
                         value={notes}
                         onChange={e => setNotes(e.target.value)}
-	                        placeholder="Anything you want Aman to know before the call?"
+                        placeholder="Anything you want Aman to know before the call?"
                         rows={4}
                         className={`w-full px-4 py-2.5 rounded-lg border text-[13px] outline-none transition-all duration-200 focus:border-blue-500 resize-none ${$.inputBg} ${$.inputBorder} ${$.inputText}`}
                       />
                     </div>
-	                    <button
-	                      onClick={handleConfirmBooking}
-	                      disabled={!canConfirmBooking}
-	                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-[14px] font-bold transition-all duration-200"
-	                    >
-	                      Confirm Booking
-	                    </button>
+                    <button
+                      onClick={handleConfirmBooking}
+                      disabled={!canConfirmBooking}
+                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-[14px] font-bold transition-all duration-200"
+                    >
+                      Confirm Booking
+                    </button>
                   </div>
                   <div className="flex-1" />
                 </>
