@@ -16,7 +16,8 @@ const MONTHS = [
 const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAYS_LONG = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
-const DURATIONS: Duration[] = [15, 30, 60];
+const DURATIONS: Duration[] = [30];
+const MAX_GUESTS = 5;
 const DURATION_LABEL: Record<Duration, string> = { 15: "15 min", 30: "30 min", 60: "1 hour" };
 const DURATION_CARD_TITLE: Record<Duration, string> = {
   15: "Quick chat",
@@ -179,6 +180,7 @@ export default function BookingPage() {
   const [email, setEmail] = useState("");
   const [emailState, setEmailState] = useState<EmailState>("idle");
   const [emailTouched, setEmailTouched] = useState(false);
+  const [guestEmails, setGuestEmails] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -223,6 +225,7 @@ export default function BookingPage() {
       setEmail("");
       setEmailState("idle");
       setEmailTouched(false);
+      setGuestEmails([]);
       setNotes("");
     } else if (selDate) {
       setSelDate(null);
@@ -246,6 +249,7 @@ export default function BookingPage() {
     setEmail("");
     setEmailState("idle");
     setEmailTouched(false);
+    setGuestEmails([]);
     setNotes("");
   }
 
@@ -283,6 +287,28 @@ export default function BookingPage() {
     setBooked(true);
   }
 
+  function handleReschedule() {
+    setBooked(false);
+    setCancelled(false);
+    setConfirmed(false);
+    setDurationChosen(true);
+    setSelDate(null);
+    setSelSlot(null);
+  }
+
+  function handleAddGuest() {
+    if (guestEmails.length >= MAX_GUESTS) return;
+    setGuestEmails(prev => [...prev, ""]);
+  }
+
+  function handleGuestEmailChange(index: number, value: string) {
+    setGuestEmails(prev => prev.map((guest, i) => (i === index ? value : guest)));
+  }
+
+  function handleRemoveGuest(index: number) {
+    setGuestEmails(prev => prev.filter((_, i) => i !== index));
+  }
+
   // ── Theme tokens ────────────────────────────────────────────────────────────
   const $ = {
     page:        dark ? "bg-black"                    : "bg-gray-50",
@@ -307,7 +333,11 @@ export default function BookingPage() {
   };
   const emailInvalid = emailTouched && email.trim().length > 0 && emailState === "invalid";
   const emailMissing = emailTouched && email.trim().length === 0;
-  const canConfirmBooking = emailState === "valid" && isValidEmail(email);
+  const normalizedEmail = email.trim().toLowerCase();
+  const validGuestEmails = guestEmails.map(guest => guest.trim()).filter(isValidEmail);
+  const hasInvalidGuests = guestEmails.some(guest => guest.trim().length > 0 && !isValidEmail(guest));
+  const hasRepeatedGuestEmail = guestEmails.some(guest => guest.trim().toLowerCase() === normalizedEmail && normalizedEmail.length > 0);
+  const canConfirmBooking = emailState === "valid" && isValidEmail(email) && !hasInvalidGuests && !hasRepeatedGuestEmail;
 
   // Responsive panel sizing:
   // - Desktop keeps the original hardcoded widths and horizontal slide behavior.
@@ -335,6 +365,7 @@ export default function BookingPage() {
       {(cancelled || booked) && selDate && selSlot ? (
         <div key={cancelled ? "cancelled-card" : "booked-card"} className={`animate-card-in relative w-full max-w-[800px] overflow-hidden rounded-2xl px-7 py-9 sm:px-10 md:px-16 md:py-12 transition-colors duration-300 ${$.card} ${$.shadow}`}>
           <Image
+            key={cancelled ? "cancelled-watermark" : "booked-watermark"}
             src="/logo.png"
             alt=""
             width={430}
@@ -368,13 +399,14 @@ export default function BookingPage() {
                 "Your meeting with Aman Tiwari has been cancelled. Hope to meet soon."
               ) : (
                 <>
-                  Your meeting with Aman Tiwari is confirmed
-                  {email && (
-                    <>
-                      , and a calendar invite has been sent to{" "}
-                      <span className={`font-medium ${$.heading} break-all`}>{email}</span>
-                    </>
-                  )}
+	                  Your meeting with Aman Tiwari is confirmed
+	                  {email && (
+	                    <>
+	                      , and a calendar invite has been sent to{" "}
+	                      <span className={`font-medium ${$.heading} break-all`}>{email}</span>
+	                      {validGuestEmails.length > 0 && " and guest(s)"}
+	                    </>
+	                  )}
                   . See you soon!
                 </>
               )}
@@ -408,21 +440,29 @@ export default function BookingPage() {
               >
                 Book again
               </button>
-            ) : (
-              <button
-                onClick={handleCancelMeeting}
-                className={`text-[13px] font-medium underline underline-offset-4 transition-colors ${$.cancelText}`}
-              >
-                Cancel Meeting
-              </button>
-            )}
+	            ) : (
+	              <div className="flex flex-wrap items-center gap-5">
+	                <button
+	                  onClick={handleReschedule}
+	                  className="text-[13px] font-medium text-blue-600 underline underline-offset-4 transition-colors hover:text-blue-700"
+	                >
+	                  Reschedule
+	                </button>
+	                <button
+	                  onClick={handleCancelMeeting}
+	                  className={`text-[13px] font-medium underline underline-offset-4 transition-colors ${$.cancelText}`}
+	                >
+	                  Cancel Meeting
+	                </button>
+	              </div>
+	            )}
           </div>
 
-          <div className={`animate-fade-up relative z-10 mt-10 md:mt-12 hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.74s" }}>
-            <span>powered by</span>
-            <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
-            <span>Intempt</span>
-          </div>
+	          <div className={`animate-fade-up relative z-10 mt-10 md:mt-12 hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.74s" }}>
+	            <span>powered by</span>
+	            <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
+	            <a href="https://intempt.com" target="_blank" rel="noreferrer" className="hover:underline underline-offset-2">Intempt</a>
+	          </div>
         </div>
 
       ) : !durationChosen ? (
@@ -458,17 +498,17 @@ export default function BookingPage() {
             ))}
           </div>
 
-          <div className={`animate-fade-up mt-12 hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.5s" }}>
-            <span>powered by</span>
-            <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
-            <span>Intempt</span>
-          </div>
+	          <div className={`animate-fade-up mt-12 hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.5s" }}>
+	            <span>powered by</span>
+	            <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
+	            <a href="https://intempt.com" target="_blank" rel="noreferrer" className="hover:underline underline-offset-2">Intempt</a>
+	          </div>
         </div>
 
       ) : (
 
         /* ── Steps 2–4: calendar, slots, and confirmation form ───────────── */
-        <div className={`animate-card-in relative w-full md:w-auto rounded-2xl flex flex-col md:flex-row md:h-130 overflow-hidden transition-colors duration-300 ${$.card} ${$.shadow}`}>
+        <div className={`animate-card-in relative w-full md:w-auto rounded-2xl flex flex-col md:flex-row ${confirmed ? "md:min-h-130" : "md:h-130"} overflow-hidden transition-colors duration-300 ${$.card} ${$.shadow}`}>
 
           {/* ── Left info panel ─────────────────────────────────────────── */}
           <div className={`w-full md:w-80 shrink-0 flex flex-col p-6 sm:p-8 border-b md:border-b-0 md:border-r ${$.divider}`}>
@@ -536,11 +576,11 @@ export default function BookingPage() {
 
             {/* Footer */}
             <div className="shrink-0">
-              <div className={`animate-fade-up hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.44s" }}>
-                <span>powered by</span>
-                <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
-                <span>Intempt</span>
-              </div>
+	              <div className={`animate-fade-up hidden md:flex items-center gap-1.5 text-[11px] ${$.muted}`} style={{ animationDelay: "0.44s" }}>
+	                <span>powered by</span>
+	                <Image src="/logo.png" alt="Intempt" width={13} height={13} className="rounded opacity-50" />
+	                <a href="https://intempt.com" target="_blank" rel="noreferrer" className="hover:underline underline-offset-2">Intempt</a>
+	              </div>
             </div>
           </div>
 
@@ -669,10 +709,9 @@ export default function BookingPage() {
             className="shrink-0 overflow-hidden transition-all duration-500 ease-in-out"
             style={{ width: formPanelWidth, maxHeight: formPanelMaxHeight }}
           >
-            <div className={`w-full md:w-125 md:h-full flex flex-col px-6 sm:px-8 md:px-10 py-8 md:py-0 md:border-l ${$.divider}`}>
+            <div className={`w-full md:w-125 md:h-full flex flex-col px-6 sm:px-8 md:px-10 py-8 md:py-10 md:border-l ${$.divider}`}>
               {confirmed && selDate && selSlot && (
                 <>
-                  <div className="flex-1" />
                   <div className="animate-fade-up space-y-4" style={{ animationDelay: "0.08s" }}>
                     <div>
                       <label htmlFor="booking-email" className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest block mb-2`}>
@@ -717,6 +756,72 @@ export default function BookingPage() {
                       )}
                     </div>
                     <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest`}>
+                          Guests
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleAddGuest}
+                          disabled={guestEmails.length >= MAX_GUESTS}
+                          className="text-[12px] font-semibold text-blue-600 underline underline-offset-4 transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:text-gray-400"
+                        >
+                          Add guest
+                        </button>
+                      </div>
+                      {guestEmails.length >= MAX_GUESTS && (
+                        <p className={`mb-2 text-[12px] ${$.sub}`}>5 guests max.</p>
+                      )}
+                      {guestEmails.length > 0 && (
+                        <div className="space-y-2">
+	                          {guestEmails.map((guest, index) => {
+	                            const guestId = `booking-guest-${index}`;
+	                            const guestRepeated = guest.trim().toLowerCase() === normalizedEmail && normalizedEmail.length > 0;
+	                            const guestInvalid = guest.trim().length > 0 && !isValidEmail(guest);
+	                            const guestHasError = guestInvalid || guestRepeated;
+	                            const guestValid = isValidEmail(guest) && !guestRepeated;
+
+	                            return (
+	                              <div key={guestId}>
+	                                <div className="flex gap-2">
+	                                  <div className="relative min-w-0 flex-1">
+	                                    <input
+	                                      id={guestId}
+	                                      type="email"
+	                                      value={guest}
+	                                      onChange={e => handleGuestEmailChange(index, e.target.value)}
+	                                      placeholder="guest@email.com"
+	                                      aria-invalid={guestHasError}
+	                                      className={`w-full px-4 py-2.5 pr-10 rounded-lg border text-[13px] outline-none transition-all duration-200 focus:border-blue-500 ${$.inputBg} ${
+	                                        guestHasError ? "border-red-400 focus:border-red-500" : $.inputBorder
+	                                      } ${$.inputText}`}
+	                                    />
+	                                    <div className="absolute right-3 top-1/2 -translate-y-1/2" role="status" aria-live="polite">
+	                                      {guestValid && <IcoCheck />}
+	                                      {guestHasError && <span className="text-[12px] font-semibold text-red-500">!</span>}
+	                                    </div>
+	                                  </div>
+	                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveGuest(index)}
+                                    aria-label={`Remove guest ${index + 1}`}
+                                    className={`px-3 text-[12px] font-semibold transition-colors ${$.sub} hover:text-red-500`}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+	                                {guestHasError && (
+	                                  <p className="mt-1.5 text-[12px] text-red-500">
+	                                    {guestRepeated ? "Email repeated." : "Enter a valid guest email."}
+	                                  </p>
+	                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div>
                       <label htmlFor="booking-notes" className={`text-[11px] font-semibold ${$.muted} uppercase tracking-widest block mb-2`}>
                         Notes{" "}
                         <span className={`normal-case tracking-normal font-normal ${$.sub}`}>(optional)</span>
@@ -738,7 +843,6 @@ export default function BookingPage() {
                       Confirm Booking
                     </button>
                   </div>
-                  <div className="flex-1" />
                 </>
               )}
             </div>
